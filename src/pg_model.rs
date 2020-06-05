@@ -26,3 +26,9 @@ impl ChannelCounter {
     self.counter
   }
 }
+
+pub struct Message {
+
+  pub id: uuid::Uuid,
+  pub payload: serde_json::Value
+}

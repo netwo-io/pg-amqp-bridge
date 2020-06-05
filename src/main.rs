@@ -5,29 +5,32 @@ mod bridge;
 
 use crate::config::Config;
 
-use postgres::NoTls;
 use std::thread;
 use std::time::Duration;
 use r2d2::{Pool, ManageConnection};
-use r2d2_postgres::PostgresConnectionManager;
+use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
 fn main() {
   env_logger::init().unwrap();
   let config = Config::new();
 
+  let pool = wait_for_pg_connection(config.postgresql_uri());
+  bridge::init(pool.get().unwrap(), config.amqp_uri().to_string(), config.boot_channel().to_string(), config.boot_routing_key().to_string(), config.delivery_mode())
+    .join().unwrap();
+
   loop {
-    let pool = wait_for_pg_connection(&config.get_postgresql_uri());
+    let pool = wait_for_pg_connection(&config.postgresql_uri());
     // This functions spawns threads for each pg channel and waits for the threads to finish,
     // that only occurs when the threads die due to a pg connection error
     // and so if that happens the pg connection is retried and the bridge is started again.
-    bridge::start(pool, &config.get_amqp_uri(), &config.get_bridge_channels(), config.get_delivery_mode());
+    bridge::start(pool, &config.amqp_uri(), &config.bridge_channels(), config.delivery_mode());
   }
 }
 
-fn wait_for_pg_connection(pg_uri: &String) -> Pool<PostgresConnectionManager<NoTls>> {
+fn wait_for_pg_connection(pg_uri: &str) -> Pool<PostgresConnectionManager> {
 
   println!("Attempting to connect to PostgreSQL..");
-  let conn = PostgresConnectionManager::new(pg_uri.parse().unwrap(), NoTls);
+  let conn = PostgresConnectionManager::new(pg_uri.to_owned(), TlsMode::None).unwrap();
   let mut i = 1;
   while let Err(e) = conn.connect() {
     println!("{:?}", e);
@@ -38,5 +41,5 @@ fn wait_for_pg_connection(pg_uri: &String) -> Pool<PostgresConnectionManager<NoT
     if i > 32 { i = 1 };
   };
   println!("Connection to PostgreSQL successful");
-  return Pool::new(conn).unwrap();
+  Pool::new(conn).unwrap()
 }
