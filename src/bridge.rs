@@ -1,11 +1,5 @@
-extern crate amqp;
-extern crate fallible_iterator;
-extern crate r2d2;
-extern crate r2d2_postgres;
-extern crate postgres;
-#[macro_use] extern crate log;
-
 use amqp::{Session, Basic, protocol, Channel, Table, AMQPError};
+use crate::pg_model::{Binding, ChannelCounter, Type};
 use postgres::NoTls;
 use postgres::fallible_iterator::FallibleIterator;
 use r2d2::{Pool, PooledConnection};
@@ -14,32 +8,6 @@ use std::default::Default;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-enum Type {
-  Exchange,
-  Queue
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-struct Binding{
-  pg_channel: String,
-  amqp_entity: String
-}
-
-//Used for channel ids
-struct ChannelCounter{
-  counter: u16
-}
-impl ChannelCounter {
-  pub fn new() -> ChannelCounter {
-    ChannelCounter { counter: 0 }
-  }
-  pub fn inc(&mut self) -> u16 {
-    self.counter += 1;
-    self.counter
-  }
-}
 
 const SEPARATOR: char = '|';
 
@@ -141,14 +109,14 @@ fn spawn_listener_publisher(
 
 
 /*
- * Finds the amqp entity type(Queue or Exchange) using two channels because currently rust-amqp hangs up when
- * doing exchange_declare and queue_declare on the same channel.
- * It does this with amqp "passive" set to true.
+* Finds the amqp entity type(Queue or Exchange) using two channels because currently rust-amqp hangs up when
+* doing exchange_declare and queue_declare on the same channel.
+* It does this with amqp "passive" set to true.
 */
 fn get_amq_entity_type(queue_channel: &mut Channel, exchange_channel: &mut Channel, amqp_entity: &str) -> Option<Type> {
 
   let opt_queue_type = queue_channel.queue_declare(amqp_entity.clone(), true, false, false, false, false, Table::new())
-                       .map(|_| Type::Queue).ok();
+                      .map(|_| Type::Queue).ok();
   let opt_exchange_type = exchange_channel.exchange_declare(amqp_entity, "", true, false, false, false, false, Table::new())
                           .map(|_| Type::Exchange).ok();
   queue_channel.close(200, "").unwrap();

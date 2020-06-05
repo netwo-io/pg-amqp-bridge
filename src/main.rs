@@ -1,12 +1,11 @@
-extern crate env_logger;
-extern crate pg_amqp_bridge as bridge;
-extern crate r2d2;
-extern crate r2d2_postgres;
-
+#[macro_use] extern crate log;
 mod config;
+mod pg_model;
+mod bridge;
 
 use crate::config::Config;
-use r2d2_postgres::postgres::NoTls;
+
+use postgres::NoTls;
 use std::thread;
 use std::time::Duration;
 use r2d2::{Pool, ManageConnection};
