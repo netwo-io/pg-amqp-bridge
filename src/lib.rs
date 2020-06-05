@@ -6,9 +6,10 @@ extern crate postgres;
 #[macro_use] extern crate log;
 
 use amqp::{Session, Basic, protocol, Channel, Table, AMQPError};
-use fallible_iterator::FallibleIterator;
+use postgres::NoTls;
+use postgres::fallible_iterator::FallibleIterator;
 use r2d2::{Pool, PooledConnection};
-use r2d2_postgres::{PostgresConnectionManager};
+use r2d2_postgres::PostgresConnectionManager;
 use std::default::Default;
 use std::thread;
 use std::thread::JoinHandle;
@@ -42,10 +43,10 @@ impl ChannelCounter {
 
 const SEPARATOR: char = '|';
 
-pub fn start(pool: Pool<PostgresConnectionManager>, amqp_uri: &str, bridge_channels: &str, delivery_mode: &u8){
+pub fn start(pool: Pool<PostgresConnectionManager<NoTls>>, amqp_uri: &str, bridge_channels: &str, delivery_mode: u8) {
   let mut children = Vec::new();
 
-  for binding in parse_bridge_channels(bridge_channels){
+  for binding in parse_bridge_channels(bridge_channels) {
     children.push(
       spawn_listener_publisher(pool.get().unwrap(), amqp_uri.to_string(), binding, delivery_mode.to_owned()))
   }
@@ -55,8 +56,13 @@ pub fn start(pool: Pool<PostgresConnectionManager>, amqp_uri: &str, bridge_chann
   }
 }
 
-fn spawn_listener_publisher(pg_conn: PooledConnection<PostgresConnectionManager>,
-                            amqp_uri: String, binding: Binding, delivery_mode: u8) -> JoinHandle<()> {
+fn spawn_listener_publisher(
+  mut pg_conn: PooledConnection<PostgresConnectionManager<NoTls>>,
+  amqp_uri: String,
+  binding: Binding,
+  delivery_mode: u8
+) -> JoinHandle<()> {
+
   thread::spawn(move ||{
 
     let mut channel_counter = ChannelCounter::new();
@@ -73,16 +79,18 @@ fn spawn_listener_publisher(pg_conn: PooledConnection<PostgresConnectionManager>
     };
     let mut local_channel = session.open_channel(channel_counter.inc()).unwrap();
 
-    let listen_command = format!("LISTEN {}", binding.pg_channel);
-    pg_conn.execute(listen_command.as_str(), &[]).unwrap();
+    let listen_command = format!("LISTEN \"{}\"", binding.pg_channel.as_str());
+    pg_conn.execute(listen_command.as_str(), &[]).expect("Could not send LISTEN");
+    // pg_conn.execute(listen_command.as_str(), &[]).unwrap();
 
     println!("Listening on {}...", binding.pg_channel);
 
-    let notifications = pg_conn.notifications();
+    let mut notifications = pg_conn.notifications();
     let mut it = notifications.blocking_iter();
 
     while let Ok(Some(notification)) = it.next() {
-      let (routing_key, message) = parse_notification(&notification.payload);
+
+      let (routing_key, message) = parse_notification(&notification.payload());
       let (exchange, key) =
         if amqp_entity_type == Type::Exchange {
           (binding.amqp_entity.as_str(), routing_key)
@@ -137,7 +145,8 @@ fn spawn_listener_publisher(pg_conn: PooledConnection<PostgresConnectionManager>
  * doing exchange_declare and queue_declare on the same channel.
  * It does this with amqp "passive" set to true.
 */
-fn get_amq_entity_type(queue_channel: &mut Channel, exchange_channel: &mut Channel, amqp_entity: &str) -> Option<Type>{
+fn get_amq_entity_type(queue_channel: &mut Channel, exchange_channel: &mut Channel, amqp_entity: &str) -> Option<Type> {
+
   let opt_queue_type = queue_channel.queue_declare(amqp_entity.clone(), true, false, false, false, false, Table::new())
                        .map(|_| Type::Queue).ok();
   let opt_exchange_type = exchange_channel.exchange_declare(amqp_entity, "", true, false, false, false, false, Table::new())
@@ -151,14 +160,14 @@ fn get_amq_entity_type(queue_channel: &mut Channel, exchange_channel: &mut Chann
 
 fn parse_bridge_channels(bridge_channels: &str) -> Vec<Binding>{
   let mut bindings: Vec<Binding> = Vec::new();
-  let strs: Vec<Vec<&str>> = bridge_channels.split(",").map(|s| s.split(":").collect()).collect();
-  for i in 0..strs.len(){
+  let strs: Vec<Vec<&str>> = bridge_channels.split(',').map(|s| s.split(':').collect()).collect();
+  for i in 0..strs.len() {
     bindings.push(Binding{pg_channel: strs[i][0].trim().to_string(),
                         amqp_entity: strs[i].get(1).unwrap_or(&"").trim().to_string()});
   }
   let mut cleaned_bindings : Vec<Binding> = bindings.into_iter().filter(|x| !x.pg_channel.is_empty() && !x.amqp_entity.is_empty())
                                           .collect();
-  if cleaned_bindings.len() == 0 {
+  if cleaned_bindings.is_empty() {
     panic!("No bindings(e.g. pgchannel1:queue1) specified in \"{}\"", bridge_channels)
   }
   cleaned_bindings.sort();
@@ -172,7 +181,8 @@ fn parse_bridge_channels(bridge_channels: &str) -> Vec<Binding>{
   cleaned_bindings
 }
 
-fn parse_notification(payload: &str) -> (&str, &str){
+fn parse_notification(payload: &str) -> (&str, &str) {
+
   let v: Vec<&str> = payload.splitn(2, SEPARATOR).map(|x| x.trim()).collect();
   if v.len() > 1 {
     (v[0], v[1])
@@ -182,6 +192,7 @@ fn parse_notification(payload: &str) -> (&str, &str){
 }
 
 pub fn wait_for_amqp_session(amqp_uri: &str, pg_channel: &str) -> Session {
+
   println!("Attempting to obtain connection on AMQP server for {} channel..", pg_channel);
   let mut s = Session::open_url(amqp_uri);
   let mut i = 1;
