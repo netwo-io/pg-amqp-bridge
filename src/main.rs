@@ -5,8 +5,6 @@ mod bridge;
 
 use crate::config::Config;
 
-use std::thread;
-use std::time::Duration;
 use r2d2::{Pool, ManageConnection};
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
@@ -15,7 +13,7 @@ fn main() {
   let config = Config::new();
 
   let pool = wait_for_pg_connection(config.postgresql_uri());
-  bridge::boot(pool.get().unwrap(), config.amqp_uri().to_string(), config.boot_channel().to_string(), config.boot_routing_key().to_string(), config.delivery_mode())
+  bridge::boot(pool.get().unwrap(), config.amqp_uri().to_string(), config.boot_channel().to_string(), config.delivery_mode(), config.unacknowledged_bulk_size())
     .join().unwrap();
 
   loop {
@@ -31,14 +29,8 @@ fn wait_for_pg_connection(pg_uri: &str) -> Pool<PostgresConnectionManager> {
 
   println!("Attempting to connect to PostgreSQL..");
   let conn = PostgresConnectionManager::new(pg_uri.to_owned(), TlsMode::None).unwrap();
-  let mut i = 1;
-  while let Err(e) = conn.connect() {
-    println!("{:?}", e);
-    let time = Duration::from_secs(i);
-    println!("Retrying the PostgreSQL connection in {:?} seconds..", time.as_secs());
-    thread::sleep(time);
-    i *= 2;
-    if i > 32 { i = 1 };
+  if let Err(e) = conn.connect() {
+    panic!("{:?}", e);
   };
   println!("Connection to PostgreSQL successful");
   Pool::new(conn).unwrap()

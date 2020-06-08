@@ -30,43 +30,47 @@ pub fn boot(
   pg_conn: PooledConnection<PostgresConnectionManager>,
   amqp_uri: String,
   channel: String,
-  routing_key: String,
-  delivery_mode: u8
+  delivery_mode: u8,
+  unacknowledged_bulk_size: i64
 ) -> JoinHandle<()> {
 
   thread::spawn(move || {
 
     let binding = Binding { pg_channel: String::from(""), amqp_entity: channel.trim().to_string() };
-    let (exchange, key) = (binding.amqp_entity.as_str(), routing_key.as_str());
+    let exchange = binding.amqp_entity.as_str();
     let mut channel_counter = ChannelCounter::new();
     let mut session = wait_for_amqp_session(&amqp_uri, &binding.amqp_entity.as_str());
-    let mut local_channel = session.open_channel(channel_counter.inc()).unwrap();
+    let mut local_channel = session.open_channel(channel_counter.inc()).expect("[boot] local channel open error");
 
-    for row in &pg_conn.query("select * from lib_amqp.unacknowledged_message", &[]).unwrap() {
+    loop {
 
-      let message = Message {
-        id: row.get(0),
-        payload: row.get(1)
-      };
-
-      let publication = local_channel.basic_publish(
-          exchange, key, true, false,
-          protocol::basic::BasicProperties { content_type: Some("text".to_string()), delivery_mode: Some(delivery_mode), ..Default::default() },
-          serde_json::to_vec(&message.payload).unwrap()
-        );
-
-      // When RMQ connection is stop processing.
-      if let Err(e@AMQPError::IoError(_)) = publication {
-        error!("{:?}", e);
+      let rows = &pg_conn.query("select * from lib_amqp.unacknowledged_message limit $1", &[&unacknowledged_bulk_size]).expect("[boot] select all lib_amqp.unacknowledged_message error");
+      if rows.is_empty() {
+        debug!("[boot] No more unacknowledged messages to replay.");
         break;
       }
 
-      match publication {
-        Ok(_) => {
-          pg_conn.execute("select lib_amqp.acknowledge($1)", &[&message.id]).unwrap();
-          info!("OK {:?}", message.id);
-        },
-        Err(e)  => error!("{:?}", e)
+      for row in rows {
+
+        let message = Message {
+          id: row.get(0),
+          routing_key: row.get(1),
+          payload: row.get(2),
+        };
+
+        let publication = local_channel.basic_publish(
+            exchange, &message.routing_key.as_str(), true, false,
+            protocol::basic::BasicProperties { content_type: Some("application/json".to_string()), delivery_mode: Some(delivery_mode), ..Default::default() },
+            serde_json::to_vec(&message.payload).unwrap()
+          );
+
+        match publication {
+          Ok(_) => {
+            pg_conn.execute("select lib_amqp.acknowledge($1)", &[&message.id]).unwrap();
+            info!("OK {:?}", message.id);
+          },
+          Err(e)  => panic!("{:?}", e)
+        }
       }
     }
 
@@ -116,16 +120,17 @@ fn spawn_listener_publisher(
       match row {
         Ok(row) => {
 
-          let message = Message {
-            id: row.get(0).get("message__id"),
-            payload: row.get(0).get("payload")
-          };
-
           let (exchange, key) = if amqp_entity_type == Type::Exchange {
               (binding.amqp_entity.as_str(), routing_key)
             } else {
               ("", binding.amqp_entity.as_str())
             };
+
+          let message = Message {
+            id: row.get(0).get("message__id"),
+            routing_key: key.to_string(),
+            payload: row.get(0).get("payload")
+          };
 
           let mut publication = local_channel.basic_publish(
               exchange, key, true, false,

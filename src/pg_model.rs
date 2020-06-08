@@ -30,5 +30,6 @@ impl ChannelCounter {
 pub struct Message {
 
   pub id: uuid::Uuid,
+  pub routing_key: String,
   pub payload: serde_json::Value
 }
