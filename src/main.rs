@@ -33,5 +33,5 @@ fn wait_for_pg_connection(pg_uri: &str) -> Pool<PostgresConnectionManager> {
     panic!("{:?}", e);
   };
   println!("Connection to PostgreSQL successful");
-  Pool::new(conn).unwrap()
+  Pool::builder().max_size(4).build(conn).unwrap()
 }
