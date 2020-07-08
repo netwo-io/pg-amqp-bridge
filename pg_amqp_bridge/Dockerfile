@@ -7,6 +7,6 @@ RUN cargo install --path .
 
 FROM debian:buster-slim
 
-COPY --from=builder /usr/local/cargo/bin/pg-amqp-bridge /usr/local/bin/pg-amqp-bridge
+COPY --from=builder /usr/local/cargo/bin/pg_amqp_bridge /usr/local/bin/pg_amqp_bridge
 
-CMD ["pg-amqp-bridge"]
+CMD ["pg_amqp_bridge"]

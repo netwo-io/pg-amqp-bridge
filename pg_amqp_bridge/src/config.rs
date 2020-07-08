@@ -8,7 +8,8 @@ pub struct Config {
   bridge_channels: String,
   delivery_mode: u8,
   postgresql_uri: String,
-  unacknowledged_bulk_size: i64
+  unacknowledged_bulk_size: i64,
+  pool_size: u32
 }
 
 fn read_env_with_secret(key: &str) -> String {
@@ -37,7 +38,10 @@ impl Config {
         },
       unacknowledged_bulk_size: env::var("UNACKNOWLEDGED_BULK_SIZE")
         .map(|x| x.parse::<i64>().expect("UNACKNOWLEDGED_BULK_SIZE could not be converted to i64"))
-        .unwrap_or_else(|_| 1000)
+        .unwrap_or_else(|_| 1000),
+      pool_size: env::var("POOL_SIZE")
+        .map(|x| x.parse::<u32>().expect("POOL_SIZE could not be converted to u32"))
+        .unwrap_or_else(|_| 2)
     }
   }
 
@@ -63,6 +67,10 @@ impl Config {
 
   pub fn unacknowledged_bulk_size(&self) -> i64 {
     self.unacknowledged_bulk_size
+  }
+
+  pub fn pool_size(&self) -> u32 {
+    self.pool_size
   }
 
 }
