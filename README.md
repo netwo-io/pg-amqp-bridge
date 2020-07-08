@@ -1,4 +1,4 @@
-# PostgreSQL to AMQP bridge 
+# PostgreSQL to AMQP bridge
 
 #### Send messages to RabbitMQ from PostgreSQL
 
@@ -19,12 +19,14 @@ Configuration is done through environment variables:
 - **POSTGRESQL_URI**: e.g. `postgresql://username:password@domain.tld:port/database`
 - **AMQP_URI**: e.g. `amqp://rabbitmq//`
 - **BRIDGE_CHANNELS**: e.g. `pgchannel1:task_queue,pgchannel2:direct_exchange,pgchannel3:topic_exchange`
+- **BOOT_CHANNEL**: e.g. `task_queue`
 - **DELIVERY_MODE**: can be `PERSISTENT` or `NON-PERSISTENT`, default is `NON-PERSISTENT`
+- **UNACKNOWLEDGED_BULK_SIZE**: e.g 1000
 
 **Note:** It's recommended to always use the same name for postgresql channel and exchange/queue in `BRIDGE_CHANNELS`, for example
 `app_events:app_events,table_changes:tables_changes`
 
-## Running in console 
+## Running in console
 #### Install
 ```shell
 VERSION=0.0.1 \
@@ -38,6 +40,8 @@ mv pg-amqp-bridge /usr/local/bin
 POSTGRESQL_URI="postgres://postgres@localhost" \
 AMQP_URI="amqp://localhost//" \
 BRIDGE_CHANNELS="pgchannel1:task_queue,pgchannel2:direct_exchange,pgchannel3:topic_exchange" \
+BOOT_CHANNEL="task_queue" \
+UNACKNOWLEDGED_BULK_SIZE="1000" \
 pg-amqp-bridge
 ```
 
@@ -48,7 +52,9 @@ docker run --rm -it --net=host \
 -e POSTGRESQL_URI="postgres://postgres@localhost" \
 -e AMQP_URI="amqp://localhost//" \
 -e BRIDGE_CHANNELS="pgchannel1:task_queue,pgchannel2:direct_exchange,pgchannel3:topic_exchange" \
-subzerocloud/pg-amqp-bridge
+-e BOOT_CHANNEL="task_queue" \
+-e UNACKNOWLEDGED_BULK_SIZE="1000" \
+netwo.io/pg-amqp-bridge
 ```
 
 You can enable logging of the forwarded messages with the ```RUST_LOG=info``` environment variable.
@@ -102,7 +108,7 @@ create or replace function rabbitmq.on_row_change() returns trigger as $$
     row record;
   begin
     routing_key := 'row_change'
-                   '.table-'::text || TG_TABLE_NAME::text || 
+                   '.table-'::text || TG_TABLE_NAME::text ||
                    '.event-'::text || TG_OP::text;
     if (TG_OP = 'DELETE') then
         row := old;

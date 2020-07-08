@@ -1,11 +1,11 @@
 extern crate rustc_test;
-extern crate pg_amqp_bridge as bridge;
 extern crate futures;
 extern crate tokio_core;
 extern crate lapin_futures as lapin;
 extern crate postgres;
 extern crate r2d2;
 extern crate r2d2_postgres;
+#[macro_use] extern crate pg_amqp_bridge;
 
 use r2d2::{Pool};
 use r2d2_postgres::{PostgresConnectionManager};
@@ -56,7 +56,7 @@ fn publishing_to_queue_works() {
     .and_then(|client| client.create_channel())
     .and_then(|channel|
       channel.queue_declare(TEST_1_QUEUE, &QueueDeclareOptions::default(), FieldTable::new())
-      .and_then(move |_| 
+      .and_then(move |_|
         channel.basic_consume(TEST_1_QUEUE, "my_consumer_1", &BasicConsumeOptions::default())
         .and_then(move |stream|{
           pg_conn.execute(format!("NOTIFY {}, '{}|Queue test'", TEST_1_PG_CHANNEL, TEST_1_QUEUE).as_str(), &[]).unwrap();
@@ -166,8 +166,8 @@ fn setup(){
     .and_then(|client| client.create_channel())
     .and_then(|channel|
       channel.queue_declare(TEST_1_QUEUE, &QueueDeclareOptions::default(), FieldTable::new())
-      .and_then(move |_| 
-        channel.exchange_declare(TEST_2_EXCHANGE, "direct", 
+      .and_then(move |_|
+        channel.exchange_declare(TEST_2_EXCHANGE, "direct",
                                  &ExchangeDeclareOptions{
                                    passive: false,
                                    durable: false,
@@ -177,7 +177,7 @@ fn setup(){
                                    ..Default::default()
                                  }, FieldTable::new())
         .and_then(move |_|
-          channel.exchange_declare(TEST_3_EXCHANGE, "topic", 
+          channel.exchange_declare(TEST_3_EXCHANGE, "topic",
                                    &ExchangeDeclareOptions{
                                      passive: false,
                                      durable: false,
@@ -203,9 +203,9 @@ fn teardown(){
     .and_then(|client| client.create_channel())
     .and_then(|channel|{
       channel.queue_delete(TEST_1_QUEUE, &QueueDeleteOptions::default())
-      .and_then(move |_| 
+      .and_then(move |_|
         channel.queue_delete(TEST_2_QUEUE, &QueueDeleteOptions::default())
-        .and_then(move |_| 
+        .and_then(move |_|
           channel.queue_delete(TEST_3_QUEUE, &QueueDeleteOptions::default())
         )
       )
@@ -229,7 +229,7 @@ fn main() {
   let args: Vec<_> = env::args().collect();
   let mut tests = Vec::new();
 
-  let bridge_channels = format!("{}:{},{}:{},{}:{}", 
+  let bridge_channels = format!("{}:{},{}:{},{}:{}",
                                 TEST_1_PG_CHANNEL, TEST_1_QUEUE,
                                 TEST_2_PG_CHANNEL, TEST_2_EXCHANGE,
                                 TEST_3_PG_CHANNEL, TEST_3_EXCHANGE);
@@ -244,7 +244,7 @@ fn main() {
     .build(PostgresConnectionManager::new(TEST_PG_URI.to_string(), r2d2_postgres::TlsMode::None).unwrap())
     .unwrap();
   thread::spawn(move ||
-    bridge::start(pool, &TEST_AMQP_URI, &bridge_channels, &(1 as u8))
+    bridge::start_consumers(pool, &TEST_AMQP_URI, &bridge_channels, &(1 as u8))
   );
   thread::sleep(Duration::from_secs(4));
   test::test_main(&args, tests);
