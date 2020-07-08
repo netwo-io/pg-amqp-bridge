@@ -22,6 +22,7 @@ Configuration is done through environment variables:
 - **BOOT_CHANNEL**: e.g. `task_queue`
 - **DELIVERY_MODE**: can be `PERSISTENT` or `NON-PERSISTENT`, default is `NON-PERSISTENT`
 - **UNACKNOWLEDGED_BULK_SIZE**: e.g 1000
+- **POOL_SIZE**: e.g 2 Postgres connection pool size
 
 **Note:** It's recommended to always use the same name for postgresql channel and exchange/queue in `BRIDGE_CHANNELS`, for example
 `app_events:app_events,table_changes:tables_changes`
@@ -42,6 +43,7 @@ AMQP_URI="amqp://localhost//" \
 BRIDGE_CHANNELS="pgchannel1:task_queue,pgchannel2:direct_exchange,pgchannel3:topic_exchange" \
 BOOT_CHANNEL="task_queue" \
 UNACKNOWLEDGED_BULK_SIZE="1000" \
+POOL_SIZE="4" \
 pg-amqp-bridge
 ```
 
@@ -54,7 +56,8 @@ docker run --rm -it --net=host \
 -e BRIDGE_CHANNELS="pgchannel1:task_queue,pgchannel2:direct_exchange,pgchannel3:topic_exchange" \
 -e BOOT_CHANNEL="task_queue" \
 -e UNACKNOWLEDGED_BULK_SIZE="1000" \
-netwo.io/pg-amqp-bridge
+-e POOL_SIZE="4" \
+netwo/pg-amqp-bridge:{TAG}
 ```
 
 You can enable logging of the forwarded messages with the ```RUST_LOG=info``` environment variable.

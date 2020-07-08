@@ -1,5 +1,5 @@
 [workspace]
-members = [ "pg_amqp_bridge", "pg_amqp_bridge_tests" ]
+members = [ "pg_amqp_bridge" ]
 
 [profile.release]
 debug  = true
