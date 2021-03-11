@@ -9,7 +9,7 @@ use r2d2::{Pool, ManageConnection};
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
 fn main() {
-  env_logger::init().unwrap();
+  env_logger::init();
   let config = Config::new();
 
   let pool = wait_for_pg_connection(&config);
